@@ -3,6 +3,7 @@ const { google } = require('googleapis');
 
 async function getSheetData(sheets, sheetId, sheetName) {
   const range = `'${sheetName}'!A1:Z1000`;
+  console.log("Fetching: " + range);
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetId,
     range: range,
@@ -26,14 +27,12 @@ async function run() {
   });
   const sheets = google.sheets({ version: 'v4', auth });
 
-  // Sheet1 = login
   const loginData = await getSheetData(sheets, sheetId, 'Sheet1');
   fs.writeFileSync('data.json', JSON.stringify(loginData, null, 2));
 
-  // PROFILES = your screenshot tab
   const profileData = await getSheetData(sheets, sheetId, 'PROFILES');
   fs.writeFileSync('profiles.json', JSON.stringify(profileData, null, 2));
 
-  console.log("DONE");
+  console.log("SUCCESS: Both files saved");
 }
 run();
