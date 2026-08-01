@@ -1,32 +1,51 @@
 name: Update Sheet Cache
 on:
-  push:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
-
-permissions:
-  contents: write
+  push:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install googleapis
-      - run: node fetch-sheet.js
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
-      - run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git pull --rebase
+
+      - name: Update cache
+        run: |
+          node -e "
+          const https = require('https');
+          const fs = require('fs');
+          const url = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+          https.get(url, (res) => {
+            let data='';
+            res.on('data', c=>data+=c);
+            res.on('end', ()=>{
+              fs.writeFileSync('data.json', data);
+              console.log('data.json updated');
+              try{
+                const json = JSON.parse(data);
+                const profiles = json.students || json.profiles || json;
+                fs.writeFileSync('profiles.json', JSON.stringify(profiles, null, 2));
+                console.log('profiles.json updated');
+              }catch(e){ console.log('raw data, skipping profiles split'); fs.writeFileSync('profiles.json', data); }
+            });
+          });
+          "
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json profiles.json
-          git commit -m "Update cache" || echo "No changes to commit"
+          git commit -m "auto update cache" || echo "no changes"
           git push origin main
