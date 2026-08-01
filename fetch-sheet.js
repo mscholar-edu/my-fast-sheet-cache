@@ -2,25 +2,25 @@ const fs = require('fs');
 const { google } = require('googleapis');
 
 async function getSheetData(sheets, sheetId, sheetName) {
-  try {
-    const range = `'${sheetName}'!A1:Z1000`;
-    console.log("Trying: " + range);
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: range,
+  const range = `'${sheetName}'!A1:Z1000`;
+  console.log("Trying: " + range);
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: range,
+  });
+  const rows = res.data.values || [];
+  if (rows.length === 0) return [];
+  const [headers,...data] = rows;
+  return data.map(row => {
+    let obj = {};
+    headers.forEach((h, i) => {
+      if (!h) return;
+      let key = h.trim();
+      if (key.toUpperCase() === 'HOME ADRESS') key = 'HOME ADDRESS';
+      obj[key] = row[i] || '';
     });
-    const rows = res.data.values || [];
-    if (rows.length === 0) return [];
-    const [headers, ...data] = rows;
-    return data.map(row => {
-      let obj = {};
-      headers.forEach((h, i) => { if (h) obj[h.trim()] = row[i] || ''; });
-      return obj;
-    });
-  } catch (e) {
-    console.log(`FAILED to fetch ${sheetName}: ${e.message}`);
-    return null; // signal fail
-  }
+    return obj;
+  });
 }
 
 async function run() {
@@ -32,25 +32,30 @@ async function run() {
   });
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const loginData = await getSheetData(sheets, sheetId, 'Sheet1');
-  if (loginData) {
-    fs.writeFileSync('data.json', JSON.stringify(loginData, null, 2));
-    console.log(`data.json OK: ${loginData.length} rows`);
-  }
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+  const allTabs = meta.data.sheets.map(s => s.properties.title);
+  console.log("All tabs found:", allTabs);
 
-  // Try PROFILES, if fails try Sheet name with different cases
-  let profileData = await getSheetData(sheets, sheetId, 'PROFILES');
-  if (!profileData) profileData = await getSheetData(sheets, sheetId, 'Profiles');
-  if (!profileData) profileData = await getSheetData(sheets, sheetId, 'STUDENTS PROFILE');
-  
-  if (profileData) {
-    fs.writeFileSync('profiles.json', JSON.stringify(profileData, null, 2));
-    console.log(`profiles.json OK: ${profileData.length} rows`);
-  } else {
-    fs.writeFileSync('profiles.json', JSON.stringify([], null, 2));
-    console.log("profiles.json created as empty [] to prevent crash");
-  }
+  const findTab = (names) => {
+    for (let n of names) {
+      const found = allTabs.find(t => t.toLowerCase() === n.toLowerCase());
+      if (found) return found;
+    }
+    return null;
+  };
 
-  console.log("SUCCESS");
+  const loginTab = findTab(['Sheet1', 'LOGIN', 'logins']) || allTabs[0];
+  const profileTab = findTab(['PROFILES', 'Profiles', 'STUDENT PROFILE', 'STUDENTS PROFILE', 'STUDENT PROFILES', 'Profile', 'STUDENTS']) || 'PROFILES';
+
+  console.log(`Using login tab: ${loginTab}, profile tab: ${profileTab}`);
+
+  const loginData = await getSheetData(sheets, sheetId, loginTab);
+  fs.writeFileSync('data.json', JSON.stringify(loginData, null, 2));
+  console.log(`data.json OK: ${loginData.length} rows`);
+
+  const profileData = await getSheetData(sheets, sheetId, profileTab);
+  fs.writeFileSync('profiles.json', JSON.stringify(profileData, null, 2));
+  console.log(`profiles.json OK: ${profileData.length} rows`);
+  console.log(`Sample:`, profileData[0]);
 }
-run();
+run().catch(e=>{ console.error(e); process.exit(1); });
