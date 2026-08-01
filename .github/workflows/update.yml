@@ -27,7 +27,11 @@ jobs:
       - run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+          rm -rf node_modules package-lock.json
+          git stash --include-untracked || true
           git pull --rebase
+          git stash pop || true
+          rm -rf node_modules package-lock.json
           git add data.json profiles.json
-          git commit -m "Update cache" || echo "No changes"
+          git commit -m "Update cache" || echo "No changes to commit"
           git push
